@@ -192,12 +192,26 @@ def count_order_rows(origin):
 def check_quarters(origin, row):
     (x0, y0) = origin
     pix = screenshot(x0 + 468, y0 + 162 + row * 25, x0 + 476, y0 + 170 + row * 25)
-    q1 = rgb_dist(pix[0, 0], (135, 135, 135)) < 60
-    q2 = rgb_dist(pix[7, 0], (135, 135, 135)) < 60
-    q3 = rgb_dist(pix[7, 7], (135, 135, 135)) < 60
-    q4 = rgb_dist(pix[0, 7], (135, 135, 135)) < 60
-    print("%s %s %s %s" % (q1, q2, q3, q4))
-    
+    d1 = rgb_dist(pix[0, 0], (130, 130, 130))
+    d2 = rgb_dist(pix[6, 0], (130, 130, 130))
+    d3 = rgb_dist(pix[6, 6], (130, 130, 130))
+    d4 = rgb_dist(pix[0, 6], (130, 130, 130))
+    q1 = rgb_dist(pix[0, 0], (130, 130, 130)) < 90
+    q2 = rgb_dist(pix[6, 0], (130, 130, 130)) < 90
+    q3 = rgb_dist(pix[6, 6], (130, 130, 130)) < 90
+    q4 = rgb_dist(pix[0, 6], (130, 130, 130)) < 90
+    print("row %d: %s %s %s %s [%d %d %d %d]" % (row, q1, q2, q3, q4, d1, d2, d3, d4))
+
+def cutting_type(origin):
+    (x0, y0) = origin
+    pix = screenshot(x0 + 544, y0 + 340, x0 + 550, y0 + 352)
+    c4 = rgb_dist(pix[0, 11], (102, 102, 102)) < 20
+    c6 = rgb_dist(pix[3, 2], (102, 102, 102)) < 20
+    c8 = rgb_dist(pix[5, 0], (102, 102, 102)) < 20
+    if c4:
+        return 8 if c8 else 4
+    else:
+        return 6 if c6 else 0
     
 def take_order(origin):
     click_take_order(origin)
@@ -208,6 +222,8 @@ def take_order(origin):
     print("Order has %d rows" % rows)
     for row in xrange(rows):
         check_quarters(origin, row)
+    slices = cutting_type(origin)
+    print("Cut in %d" % slices)
 
 click_make_pizza = click_take_order
 click_into_oven = click_make_pizza    
@@ -276,13 +292,11 @@ def start_game(save_number=2, debug=False):
     slide_to(save_x, save_y)
     click_at()
     wait_for(f_has_buttons)
-    wait_for(f_can_take_order)
-    take_order(origin)
+    for cust in xrange(10):
+        wait_for(f_can_take_order)
+        take_order(origin)
     goto_topping_station(origin)
     make_pizza(origin)
-    goto_order_station(origin)
-    wait_for(f_can_take_order)
-    take_order(origin)
     time.sleep(2)
     quit_game(origin)
     
