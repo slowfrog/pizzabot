@@ -119,6 +119,29 @@ def quit_game(origin):
     click_at()
     slide_to(x0 + 274, y0 + 288)
     click_at()
+
+def has_buttons(origin):
+    (x0, y0) = origin
+    pix = screenshot(x0 + 400, y0, x0 + 600, y0 + 50)
+    return ((rgb_dist(pix[24, 16], (105, 246, 0)) < RGB_TOLERANCE) and
+            (rgb_dist(pix[67, 20], (255, 253, 98)) < RGB_TOLERANCE) and
+            (rgb_dist(pix[115, 21], (255, 164, 32)) < RGB_TOLERANCE) and
+            (rgb_dist(pix[164, 20], (44, 137, 255)) < RGB_TOLERANCE))
+            
+
+def wait_for(f, period, timeout):
+    start_time = time.clock()
+    timeout_elapsed = timeout < 0
+    round = 0
+    while not (f() or timeout_elapsed):
+        round += 1
+        print("Condition not met, round %d" % round)
+        time.sleep(period)
+        timeout_elapsed = ((time.clock() - start_time) > timeout > 0)
+    if timeout_elapsed:
+        print("Sorry")
+    else:
+        print("Ok after %d rounds" % round)
     
 def start_game(save_number=0, debug=False):
     origin = find_screen(debug)
