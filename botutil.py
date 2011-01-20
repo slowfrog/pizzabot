@@ -80,8 +80,16 @@ def click_at(x=None, y=None, delta_t=0.02):
     time.sleep(delta_t)
     win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP,0,0)
 
+def drag_drop(x0, y0, x1, y1, delta_t=0.1):
+    win32api.SetCursorPos((x0, y0))
+    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0)
+    time.sleep(delta_t)
+    win32api.SetCursorPos((x1, y1))
+    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP,0,0)
+    time.sleep(delta_t)
+    
 def slide_to(x1, y1, delta_t=1, step_t=0.05):
-    count = math.floor(delta_t / step_t)
+    count = int(math.floor(delta_t / step_t))
     count = 1 if count < 1 else count
     (x, y) = win32api.GetCursorPos()
     for i in xrange(count + 1):
@@ -116,11 +124,11 @@ def cursor_no():
 
 def quit_game(origin):
     (x0, y0) = origin
-    slide_to(x0 + 522, y0 + 439)
+    slide_to(x0 + 522, y0 + 439, 0.5)
     click_at()
-    slide_to(x0 + 278, y0 + 360)
+    slide_to(x0 + 278, y0 + 360, 0.5)
     click_at()
-    slide_to(x0 + 274, y0 + 288)
+    slide_to(x0 + 274, y0 + 288, 0.5)
     click_at()
 
 def has_buttons(origin):
@@ -134,23 +142,27 @@ def has_buttons(origin):
 def goto_order_station(origin):
     (x0, y0) = origin
     click_at(x0 + 424, y0 + 29)
+    time.sleep(0.25)
 
 def goto_topping_station(origin):
     (x0, y0) = origin
     click_at(x0 + 474, y0 + 29)
+    time.sleep(0.25)
     
 def goto_baking_station(origin):
     (x0, y0) = origin
     click_at(x0 + 522, y0 + 29)
+    time.sleep(0.25)
     
 def goto_cutting_station(origin):
     (x0, y0) = origin
     click_at(x0 + 572, y0 + 29)
+    time.sleep(0.25)
     
 def check_one_pixel(origin, x, y, color):
     (x0, y0) = origin
     pix = screenshot(x0 + x, y0 + y, x0 + x + 1, y0 + y + 1)
-    print(pix[0, 0])
+    #print(pix[0, 0])
     return rgb_dist(pix[0, 0], color) < RGB_TOLERANCE
     
 def can_take_order(origin):
@@ -166,12 +178,71 @@ def click_take_order(origin):
     (x0, y0) = origin
     click_at(x0 + 513, y0 + 386)
 
+ORDER_ROW_Y = 166
+
+def count_order_rows(origin):
+    row = 0
+    while row < 7:
+        y = ORDER_ROW_Y + 25 * row
+        if not check_one_pixel(origin, 537, y, (102, 102, 102)):
+            break
+        row += 1
+    return row
+
+def check_quarters(origin, row):
+    (x0, y0) = origin
+    pix = screenshot(x0 + 468, y0 + 162 + row * 25, x0 + 476, y0 + 170 + row * 25)
+    q1 = rgb_dist(pix[0, 0], (135, 135, 135)) < 60
+    q2 = rgb_dist(pix[7, 0], (135, 135, 135)) < 60
+    q3 = rgb_dist(pix[7, 7], (135, 135, 135)) < 60
+    q4 = rgb_dist(pix[0, 7], (135, 135, 135)) < 60
+    print("%s %s %s %s" % (q1, q2, q3, q4))
+    
+    
 def take_order(origin):
     click_take_order(origin)
     wait_for(lambda : is_taking_order(origin))
     wait_for(lambda : order_finished(origin))
     # analyze order
+    rows = count_order_rows(origin)
+    print("Order has %d rows" % rows)
+    for row in xrange(rows):
+        check_quarters(origin, row)
 
+click_make_pizza = click_take_order
+click_into_oven = click_make_pizza    
+    
+TOPPINGS = {
+    "salami": (40, 300),
+    "meat": (75, 375),
+    "mushrooms": (140, 400),
+    "pepperoni": (215, 415),
+    "onions": (300, 400),
+    "olives": (360, 375),
+    "anchovies": (400, 300)
+    }
+
+def move_topping(origin, topping, to):
+    (x0, y0) = origin
+    (xt, yt) = TOPPINGS[topping]
+    (x1, y1) = to
+    drag_drop(x0 + xt, y0 + yt, x0 + x1, y0 + y1)
+
+def test_topping(origin):
+    move_topping(origin, "anchovies", (230, 250))
+    move_topping(origin, "olives", (230, 220))
+    move_topping(origin, "onions", (300, 250))
+    move_topping(origin, "pepperoni", (300, 140))
+    move_topping(origin, "mushrooms", (120, 250))
+    move_topping(origin, "meat", (120, 300))
+    move_topping(origin, "salami", (180, 150))
+
+def make_pizza(origin):
+    click_make_pizza(origin)
+    time.sleep(1)
+    test_topping(origin)
+    click_into_oven(origin)
+    
 def originate(f, origin):
     return lambda : f(origin)
 
@@ -181,7 +252,6 @@ def wait_for(f, period=0.5, timeout=30):
     round = 0
     while not (f() or timeout_elapsed):
         round += 1
-        print("Condition not met, round %d" % round)
         time.sleep(period)
         timeout_elapsed = ((time.clock() - start_time) > timeout > 0)
     if timeout_elapsed:
@@ -209,12 +279,10 @@ def start_game(save_number=2, debug=False):
     wait_for(f_can_take_order)
     take_order(origin)
     goto_topping_station(origin)
-    time.sleep(2)
-    goto_baking_station(origin)
-    time.sleep(2)
-    goto_cutting_station(origin)
-    time.sleep(2)
+    make_pizza(origin)
     goto_order_station(origin)
+    wait_for(f_can_take_order)
+    take_order(origin)
     time.sleep(2)
     quit_game(origin)
     
