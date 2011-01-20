@@ -91,6 +91,9 @@ def slide_to(x1, y1, delta_t=1, step_t=0.05):
         win32api.SetCursorPos((xi, yi))
         time.sleep(step_t)
 
+def move_to(x1, y1):
+    win32api.SetCursorPos((x1, y1))
+        
 def cursor_shake(x0, y0, x1, y1):
     (xc, yc) = ((x0 + x1) / 2, (y0 + y1) / 2)
     slide_to(x0, y0, 0.15)
@@ -127,9 +130,52 @@ def has_buttons(origin):
             (rgb_dist(pix[67, 20], (255, 253, 98)) < RGB_TOLERANCE) and
             (rgb_dist(pix[115, 21], (255, 164, 32)) < RGB_TOLERANCE) and
             (rgb_dist(pix[164, 20], (44, 137, 255)) < RGB_TOLERANCE))
-            
 
-def wait_for(f, period, timeout):
+def goto_order_station(origin):
+    (x0, y0) = origin
+    click_at(x0 + 424, y0 + 29)
+
+def goto_topping_station(origin):
+    (x0, y0) = origin
+    click_at(x0 + 474, y0 + 29)
+    
+def goto_baking_station(origin):
+    (x0, y0) = origin
+    click_at(x0 + 522, y0 + 29)
+    
+def goto_cutting_station(origin):
+    (x0, y0) = origin
+    click_at(x0 + 572, y0 + 29)
+    
+def check_one_pixel(origin, x, y, color):
+    (x0, y0) = origin
+    pix = screenshot(x0 + x, y0 + y, x0 + x + 1, y0 + y + 1)
+    print(pix[0, 0])
+    return rgb_dist(pix[0, 0], color) < RGB_TOLERANCE
+    
+def can_take_order(origin):
+    return check_one_pixel(origin, 513, 386, (116, 254, 0))
+
+def is_taking_order(origin):
+    return check_one_pixel(origin, 44, 157, (0, 88, 176))
+
+def order_finished(origin):
+    return check_one_pixel(origin, 80, 250, (114, 102, 97))
+
+def click_take_order(origin):
+    (x0, y0) = origin
+    click_at(x0 + 513, y0 + 386)
+
+def take_order(origin):
+    click_take_order(origin)
+    wait_for(lambda : is_taking_order(origin))
+    wait_for(lambda : order_finished(origin))
+    # analyze order
+
+def originate(f, origin):
+    return lambda : f(origin)
+
+def wait_for(f, period=0.5, timeout=30):
     start_time = time.clock()
     timeout_elapsed = timeout < 0
     round = 0
@@ -143,8 +189,11 @@ def wait_for(f, period, timeout):
     else:
         print("Ok after %d rounds" % round)
     
-def start_game(save_number=0, debug=False):
+def start_game(save_number=2, debug=False):
     origin = find_screen(debug)
+    f_has_buttons = originate(has_buttons, origin)
+    f_can_take_order = originate(can_take_order, origin)
+    f_order_finished = originate(order_finished, origin)
     if origin is None:
         raise Exception("Origin not found")
     (x0, y0) = origin
@@ -156,9 +205,17 @@ def start_game(save_number=0, debug=False):
     save_y = y0 + 300
     slide_to(save_x, save_y)
     click_at()
-    time.sleep(5)
-    cursor_yes()
-    cursor_no()
+    wait_for(f_has_buttons)
+    wait_for(f_can_take_order)
+    take_order(origin)
+    goto_topping_station(origin)
+    time.sleep(2)
+    goto_baking_station(origin)
+    time.sleep(2)
+    goto_cutting_station(origin)
+    time.sleep(2)
+    goto_order_station(origin)
+    time.sleep(2)
     quit_game(origin)
     
     
