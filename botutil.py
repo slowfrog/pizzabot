@@ -212,8 +212,39 @@ def cutting_type(origin):
         return 8 if c8 else 4
     else:
         return 6 if c6 else 0
+
+def baking_time(origin):
+    (x0, y0) = origin
+    pix = screenshot(x0 + 470, y0 + 340, x0 + 500, y0 + 370)
+    if rgb_dist(pix[25, 4], (111, 111, 111)) < RGB_TOLERANCE:
+        return 1
+    elif rgb_dist(pix[28, 13], (102, 102, 102)) < RGB_TOLERANCE:
+        return 2
+    elif rgb_dist(pix[24, 21], (111, 111, 111)) < RGB_TOLERANCE:
+        return 3
+    elif rgb_dist(pix[18, 24], (102, 102, 102)) < RGB_TOLERANCE:
+        return 4
+    elif rgb_dist(pix[11, 21], (102, 102, 102)) < RGB_TOLERANCE:
+        return 5
+    else:
+        return 0
+
+def order_position(origin, index):
+    (x0, y0) = origin
+    return (x0 + 32 + index * 35, y0 + 6)
+
+def file_order(origin, index):
+    (x0, y0) = origin
+    (x1, y1) = order_position(origin, index)
+    drag_drop(x0 + 537, y0 + 120, x1, y1)
+
+def unfile_order(origin, index):
+    (x0, y0) = origin
+    (x1, y1) = order_position(origin, index)
+    drag_drop(x1, y1, x0 + 537, y0 + 120)
     
-def take_order(origin):
+    
+def take_order(origin, index=0):
     click_take_order(origin)
     wait_for(lambda : is_taking_order(origin))
     wait_for(lambda : order_finished(origin))
@@ -223,7 +254,10 @@ def take_order(origin):
     for row in xrange(rows):
         check_quarters(origin, row)
     slices = cutting_type(origin)
-    print("Cut in %d" % slices)
+    baketime = baking_time(origin)
+    file_order(origin, index)
+    print("Bake for %d, cut in %d, " % (baketime, slices))
+    
 
 click_make_pizza = click_take_order
 click_into_oven = click_make_pizza    
@@ -292,10 +326,13 @@ def start_game(save_number=2, debug=False):
     slide_to(save_x, save_y)
     click_at()
     wait_for(f_has_buttons)
+    order_index = 0
     for cust in xrange(10):
         wait_for(f_can_take_order)
-        take_order(origin)
+        take_order(origin, order_index)
+        order_index += 1
     goto_topping_station(origin)
+    unfile_order(origin, 3)
     make_pizza(origin)
     time.sleep(2)
     quit_game(origin)
