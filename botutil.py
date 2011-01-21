@@ -4,6 +4,7 @@ import math
 import time
 import win32api
 import win32con
+import Image
 import ImageGrab
 
 def screenshot(x0, y0, x1, y1):
@@ -202,6 +203,35 @@ def check_quarters(origin, row):
     q4 = rgb_dist(pix[0, 6], (130, 130, 130)) < 90
     print("row %d: %s %s %s %s [%d %d %d %d]" % (row, q1, q2, q3, q4, d1, d2, d3, d4))
 
+
+def find_topping(origin, row):
+    (x0, y0) = origin
+    pix = screenshot(x0 + 492, y0 + 154 + row * 25, x0 + 523, y0 + 179 + row * 25)
+    mindist = None
+    topping = None
+    for t in TOPPING_IMAGES:
+        (im, w, h) = TOPPING_IMAGES[t]
+        d = compare_images(im, pix, w, h)
+        if (mindist is None) or (d < mindist):
+            mindist = d
+            topping = t
+    print("==> %s" % topping)
+    return topping
+    
+def find_count(origin, row):
+    (x0, y0) = origin
+    pix = screenshot(x0 + 554, y0 + 154 + row * 25, x0 + 582, y0 + 179 + row * 25)
+    mindist = None
+    count = None
+    for c in COUNT_IMAGES:
+        (im, w, h) = COUNT_IMAGES[c]
+        d = compare_images(im, pix, w, h)
+        if (mindist is None) or (d < mindist):
+            mindist = d
+            count = c
+    print("++> %d" % count)
+    return count
+    
 def cutting_type(origin):
     (x0, y0) = origin
     pix = screenshot(x0 + 544, y0 + 340, x0 + 550, y0 + 352)
@@ -242,7 +272,24 @@ def unfile_order(origin, index):
     (x0, y0) = origin
     (x1, y1) = order_position(origin, index)
     drag_drop(x1, y1, x0 + 537, y0 + 120)
+
+def load_opaque_png(filename):
+    im = Image.open(filename)
+    (w, h) = im.size
+    return (im.convert("RGB").load(), w, h)
     
+def compare_images(im1, im2, w, h):
+    count = 0
+    dist = 0
+    for x in xrange(w):
+        for y in xrange(h):
+            if (im1[x, y] != (0, 0, 255)):
+                count += 1
+                dist += rgb_dist(im1[x, y], im2[x, y])
+    if count == 0:
+        return 1000000
+    else:
+        return dist / count
     
 def take_order(origin, index=0):
     click_take_order(origin)
@@ -253,6 +300,8 @@ def take_order(origin, index=0):
     print("Order has %d rows" % rows)
     for row in xrange(rows):
         check_quarters(origin, row)
+        find_topping(origin, row)
+        find_count(origin, row)
     slices = cutting_type(origin)
     baketime = baking_time(origin)
     file_order(origin, index)
@@ -271,6 +320,22 @@ TOPPINGS = {
     "olives": (360, 375),
     "anchovies": (400, 300)
     }
+
+TOPPING_IMAGES = {}
+
+COUNTS = [2, 3, 4, 5, 6, 8, 12]
+
+COUNT_IMAGES = {}
+
+def load_reference_images():
+    for topping in TOPPINGS:
+        filename = topping + ".png"
+        (img, w, h) = load_opaque_png(filename)
+        TOPPING_IMAGES[topping] = (img, w, h)
+    for count in COUNTS:
+        filename = "count%d.png" % count
+        (img, w, h) = load_opaque_png(filename)
+        COUNT_IMAGES[count] = (img, w, h)
 
 def move_topping(origin, topping, to):
     (x0, y0) = origin
@@ -305,11 +370,12 @@ def wait_for(f, period=0.5, timeout=30):
         time.sleep(period)
         timeout_elapsed = ((time.clock() - start_time) > timeout > 0)
     if timeout_elapsed:
-        print("Sorry")
-    else:
-        print("Ok after %d rounds" % round)
+        print("Waiting failed: timeout")
+    #else:
+    #    print("Ok after %d rounds" % round)
     
 def start_game(save_number=2, debug=False):
+    load_reference_images()
     origin = find_screen(debug)
     f_has_buttons = originate(has_buttons, origin)
     f_can_take_order = originate(can_take_order, origin)
