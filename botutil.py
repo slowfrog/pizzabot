@@ -175,6 +175,9 @@ def is_taking_order(origin):
 def order_finished(origin):
     return check_one_pixel(origin, 80, 250, (114, 102, 97))
 
+def order_gone(origin):
+    return not check_one_pixel(origin, 522, 351, (255, 255, 254))
+
 def click_take_order(origin):
     (x0, y0) = origin
     click_at(x0 + 513, y0 + 386)
@@ -450,6 +453,16 @@ def cut_in(origin, slices):
         (x1, y1, x2, y2) = cut
         drag_drop(x0 + x1, y0 + y1, x0 + x2, y0 + y2)
     
+def click_finish_order(origin):
+    (x0, y0) = origin
+    click_at(x0 + 513, y0 + 386)
+
+def finish_order(origin, order):
+    unfile_order(origin, order["index"])
+    cut_in(origin, order["slices"])
+    click_finish_order(origin)
+    wait_for(lambda : order_gone(origin))
+    
 def originate(f, origin):
     return lambda : f(origin)
 
@@ -473,6 +486,7 @@ def start_game(save_number=2, debug=False):
     f_has_buttons = originate(has_buttons, origin)
     f_can_take_order = originate(can_take_order, origin)
     f_order_finished = originate(order_finished, origin)
+    f_order_gone = originate(order_gone, origin)
     if origin is None:
         raise Exception("Origin not found")
     (x0, y0) = origin
@@ -487,24 +501,24 @@ def start_game(save_number=2, debug=False):
     wait_for(f_has_buttons)
     order_index = 0
     orders = []
-    for cust in xrange(4):
+    for cust in xrange(2):
         wait_for(f_can_take_order)
         order = take_order(origin, order_index)
         orders.append(order)
         order_index += 1
     make_pizza(origin, orders[0])
     make_pizza(origin, orders[1])
-    make_pizza(origin, orders[2])
-    make_pizza(origin, orders[3])
-    time.sleep(2)
+    #make_pizza(origin, orders[2])
+    #make_pizza(origin, orders[3])
     out_of_oven(origin, 0)
     out_of_oven(origin, 1)
-    out_of_oven(origin, 2)
-    out_of_oven(origin, 3)
-    
-    unfile_order(origin, 0)
-    cut_in(origin, orders[0]["slices"])
-    click_into_oven(origin)
+    #out_of_oven(origin, 2)
+    #out_of_oven(origin, 3)
+    finish_order(origin, orders[0])
+    finish_order(origin, orders[1])
+    #finish_order(origin, 2)
+    #finish_order(origin, 3)
+
     
     #quit_game(origin)
     
