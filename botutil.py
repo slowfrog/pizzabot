@@ -257,8 +257,10 @@ def baking_time(origin):
         return 4
     elif rgb_dist(pix[11, 21], (102, 102, 102)) < RGB_TOLERANCE:
         return 5
+    elif rgb_dist(pix[8, 13], (102, 102, 102)) < RGB_TOLERANCE:
+        return 6
     else:
-        return 0
+        return 0 # Nothing found...
 
 def order_position(origin, index):
     (x0, y0) = origin
@@ -318,12 +320,14 @@ def take_order(origin, index=0):
     slices = cutting_type(origin)
     baketime = baking_time(origin)
     file_order(origin, index)
-    order = { "rows": rows,
+    order = { "index": index,
+              "rows": rows,
               "baketime": baketime,
               "slices": slices }
     print_order(order)
     #print("Bake for %d, cut in %d, " % (baketime, slices))
-    
+    return order
+
 
 click_make_pizza = click_take_order
 click_into_oven = click_make_pizza    
@@ -369,11 +373,49 @@ def test_topping(origin):
     move_topping(origin, "meat", (120, 300))
     move_topping(origin, "salami", (180, 150))
 
-def make_pizza(origin):
+QUARTERS = [
+    (30, 30),
+    (60, 60),
+    (80, 30),
+    (30, 80),
+    (45, 45)
+    ]
+
+SXY = [
+    (-1, -1),
+    (1, -1),
+    (1, 1),
+    (-1, 1)
+    ]
+
+def fill_quarter(origin, which, what, how_many):
+    (sx, sy) = SXY[which]
+    for h in xrange(how_many):
+        (qx, qy) = QUARTERS[h]
+        x1 = 220 + sx * qx
+        y1 = 237 + sy * qy
+        move_topping(origin, what, (x1, y1))
+    
+def make_pizza(origin, order):
+    goto_topping_station(origin)
+    unfile_order(origin, order["index"])
     click_make_pizza(origin)
     time.sleep(1)
-    test_topping(origin)
+    for row in order["rows"]:
+        topping = row["topping"]
+        count = row["count"]
+        quarters = row["quarters"]
+        qcount = sum(1 for q in quarters if q)
+        tpq = int(count / qcount)
+        qi = 0
+        for q in quarters:
+            if q:
+                fill_quarter(origin, qi, topping, tpq)
+            qi += 1
+    time.sleep(5)
     click_into_oven(origin)
+    file_order(origin, order["index"])
+    time.sleep(1)
     
 def originate(f, origin):
     return lambda : f(origin)
@@ -410,15 +452,18 @@ def start_game(save_number=2, debug=False):
     click_at()
     wait_for(f_has_buttons)
     order_index = 0
-    for cust in xrange(10):
+    orders = []
+    for cust in xrange(4):
         wait_for(f_can_take_order)
-        take_order(origin, order_index)
+        order = take_order(origin, order_index)
+        orders.append(order)
         order_index += 1
-    goto_topping_station(origin)
-    unfile_order(origin, 3)
-    make_pizza(origin)
+    make_pizza(origin, orders[0])
+    make_pizza(origin, orders[1])
+    make_pizza(origin, orders[2])
+    make_pizza(origin, orders[3])
     time.sleep(2)
-    quit_game(origin)
+    #quit_game(origin)
     
     
     
