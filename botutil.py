@@ -201,7 +201,8 @@ def check_quarters(origin, row):
     q2 = rgb_dist(pix[6, 0], (130, 130, 130)) < 90
     q3 = rgb_dist(pix[6, 6], (130, 130, 130)) < 90
     q4 = rgb_dist(pix[0, 6], (130, 130, 130)) < 90
-    print("row %d: %s %s %s %s [%d %d %d %d]" % (row, q1, q2, q3, q4, d1, d2, d3, d4))
+    #print("row %d: %s %s %s %s [%d %d %d %d]" % (row, q1, q2, q3, q4, d1, d2, d3, d4))
+    return (q1, q2, q3, q4)
 
 
 def find_topping(origin, row):
@@ -215,7 +216,7 @@ def find_topping(origin, row):
         if (mindist is None) or (d < mindist):
             mindist = d
             topping = t
-    print("==> %s" % topping)
+    #print("==> %s" % topping)
     return topping
     
 def find_count(origin, row):
@@ -229,7 +230,7 @@ def find_count(origin, row):
         if (mindist is None) or (d < mindist):
             mindist = d
             count = c
-    print("++> %d" % count)
+    #print("++> %d" % count)
     return count
     
 def cutting_type(origin):
@@ -290,22 +291,38 @@ def compare_images(im1, im2, w, h):
         return 1000000
     else:
         return dist / count
+
+def quarter_string((q1, q2, q3, q4)):
+    return "%s%s\n%s%s" % (("#" if q1 else "."), ("#" if q2 else "."),
+                           ("#" if q4 else "."), ("#" if q3 else "."))
+
+def print_order(o):
+    for row in o["rows"]:
+        print("%s    %d %s" % (quarter_string(row["quarters"]), row["count"], row["topping"]))
+        print("----------------------")
+    print("Bake for %d, slice in %d" % (o["baketime"], o["slices"]))
     
 def take_order(origin, index=0):
     click_take_order(origin)
     wait_for(lambda : is_taking_order(origin))
     wait_for(lambda : order_finished(origin))
     # analyze order
-    rows = count_order_rows(origin)
-    print("Order has %d rows" % rows)
-    for row in xrange(rows):
-        check_quarters(origin, row)
-        find_topping(origin, row)
-        find_count(origin, row)
+    rowcount = count_order_rows(origin)
+    rows = []
+    #print("Order has %d rows" % rowcount)
+    for row in xrange(rowcount):
+        quarters = check_quarters(origin, row)
+        topping = find_topping(origin, row)
+        count = find_count(origin, row)
+        rows += [ {"quarters": quarters, "topping": topping, "count": count}]
     slices = cutting_type(origin)
     baketime = baking_time(origin)
     file_order(origin, index)
-    print("Bake for %d, cut in %d, " % (baketime, slices))
+    order = { "rows": rows,
+              "baketime": baketime,
+              "slices": slices }
+    print_order(order)
+    #print("Bake for %d, cut in %d, " % (baketime, slices))
     
 
 click_make_pizza = click_take_order
