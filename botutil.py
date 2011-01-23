@@ -178,10 +178,17 @@ def order_finished(origin):
 def order_gone(origin):
     return not check_one_pixel(origin, 522, 351, (255, 255, 254))
 
+def shop_closed(origin):
+    return check_one_pixel(origin, 385, 431, (153, 0, 0))
+
 def click_take_order(origin):
     (x0, y0) = origin
     click_at(x0 + 513, y0 + 386)
 
+def click_save_for_later(origin):
+    (x0, y0) = origin
+    click_at(x0 + 521, y0 + 417)
+    
 ORDER_ROW_Y = 166
 
 def count_order_rows(origin):
@@ -306,6 +313,14 @@ def print_order(o):
         print("%s    %d %s" % (quarter_string(row["quarters"]), row["count"], row["topping"]))
         print("----------------------")
     print("Bake for %d, slice in %d" % (o["baketime"], o["slices"]))
+
+# order states: ordered, saved, baking, baked, cut, done
+ORDER_ORDERED = "ordered"
+ORDER_SAVED = "saved"
+ORDER_BAKING = "baking"
+ORDER_BAKED = "baked"
+ORDER_CUT = "cut"
+ORDER_DONE = "done"
     
 def take_order(origin, index=0):
     click_take_order(origin)
@@ -327,7 +342,7 @@ def take_order(origin, index=0):
               "rows": rows,
               "baketime": baketime,
               "slices": slices,
-              "done": False}
+              "state": ORDER_ORDERED }
     print_order(order)
     #print("Bake for %d, cut in %d, " % (baketime, slices))
     return order
@@ -367,15 +382,6 @@ def move_topping(origin, topping, to):
     (xt, yt) = TOPPINGS[topping]
     (x1, y1) = to
     drag_drop(x0 + xt, y0 + yt, x0 + x1, y0 + y1)
-
-def test_topping(origin):
-    move_topping(origin, "anchovies", (230, 250))
-    move_topping(origin, "olives", (230, 220))
-    move_topping(origin, "onions", (300, 250))
-    move_topping(origin, "pepperoni", (300, 140))
-    move_topping(origin, "mushrooms", (120, 250))
-    move_topping(origin, "meat", (120, 300))
-    move_topping(origin, "salami", (180, 150))
 
 QUARTERS = [
     (30, 30),
@@ -424,17 +430,38 @@ def make_pizza(gstate, index):
             if q:
                 fill_quarter(origin, qi, topping, tpq)
             qi += 1
-    time.sleep(1)
     oven_slot = free_oven_slot(gstate)
     if oven_slot >= 0:
         click_into_oven(origin)
         order["oven_slot"] = oven_slot
+        order["bake_start"] = time.clock()
+        order["bake_end"] = order["bake_start"] + 22.5 * order["baketime"] - 1 # Small adjustemnt
+        order["state"] = ORDER_BAKING
         gstate["oven"][oven_slot] = order
-        file_order(origin, order["index"])
-        time.sleep(1)
     else:
-        print("Should save pizza for later...")
+        click_save_for_later(origin)
+        order["state"] = ORDER_SAVED
+        
+    file_order(origin, order["index"])
+    time.sleep(1)
 
+def bake_saved_pizza(gstate, index):
+    origin = gstate["origin"]
+    order = gstate["orders"][index]
+    goto_topping_station(origin)
+    unfile_order(origin, index)
+    time.sleep(1)
+    click_make_pizza(origin)
+    time.sleep(1)
+    oven_slot = free_oven_slot(gstate)
+    click_into_oven(origin)
+    order["oven_slot"] = oven_slot
+    order["bake_start"] = time.clock()
+    order["bake_end"] = order["bake_start"] + 22.5 * order["baketime"] - 1 # Small adjustemnt
+    order["state"] = ORDER_BAKING
+    gstate["oven"][oven_slot] = order
+    file_order(origin, index)
+        
 BAKING_POSITION = [
     (140, 190),
     (300, 190),
@@ -452,6 +479,8 @@ def out_of_oven(gstate, index):
     time.sleep(1)
     gstate["oven"][which] = None
     order["oven_slot"] = None
+    order["state"] = ORDER_BAKED
+    gstate["cutting"].append(order)
 
 CUTS = {
     4: [(220, 100, 220, 450),
@@ -476,14 +505,33 @@ def click_finish_order(origin):
     (x0, y0) = origin
     click_at(x0 + 513, y0 + 386)
 
+def next_order_ready(gstate):
+    ret = None
+    now = time.clock()
+    min_time = None
+    for order in gstate["oven"]:
+        if order is not None:
+            if min_time is None or (order["bake_end"] - now < min_time):
+                min_time = order["bake_end"] - now
+                ret = (order, min_time)
+    return ret
+
+def order_baked(order):
+    return time.clock() > order["bake_end"]
+
 def finish_order(gstate, index):
     origin = gstate["origin"]
+    goto_cutting_station(origin)
     order = gstate["orders"][index]
+    if len(gstate["cutting"]) == 0 or gstate["cutting"][0] != order:
+        raise Exception("Cannot cut order %d" % index)
     unfile_order(origin, index)
     cut_in(origin, order["slices"])
+    order["state"] = ORDER_CUT
     click_finish_order(origin)
     wait_for(lambda : order_gone(origin))
-    order["done"] = True
+    gstate["cutting"] = gstate["cutting"][1:]
+    order["state"] = ORDER_DONE
     
 def originate(f, origin):
     return lambda : f(origin)
@@ -500,16 +548,80 @@ def wait_for(f, period=0.5, timeout=30):
         print("Waiting failed: timeout")
     #else:
     #    print("Ok after %d rounds" % round)
+
+def what_can_do(gstate):
+    actions = []
+    origin = gstate["origin"]
+    now = time.clock()
     
-def start_game(save_number=2, debug=False):
-    load_reference_images()
-    origin = find_screen(debug)
+    goto_order_station(origin)
+    if len(gstate["cutting"]) > 0:
+        actions.append(("cut", gstate["cutting"][0]))
+
+    for order in gstate["orders"]:
+        if order["state"] == ORDER_ORDERED:
+            actions.append(("make", order))
+        elif order["state"] == ORDER_SAVED and free_oven_slot(gstate) >= 0:
+            actions.append(("oven", order))
+
+    # Detect shop closing/can take order
+    if gstate["closed"] != "closed":
+        if gstate["closed"] is None:
+            if shop_closed(origin):
+                gstate["closed"] = now
+        elif now > gstate["closed"] + 10:
+            gstate["closed"] = "closed"
+
+    if can_take_order(origin):
+        actions.append(("take_order", None))
+
+    return actions
+
+def play_best_action(gstate, actions):
+    origin = gstate["origin"]
+    (action, order) = actions[0]
+    if action == "take_order":
+        print("Taking order")
+        order = take_order(origin, len(gstate["orders"]))
+        gstate["orders"].append(order)
+    elif action == "make":
+        print("Making pizza")
+        make_pizza(gstate, order["index"])
+    elif action == "oven":
+        print("Into oven")
+        bake_saved_pizza(gstate, order["index"])
+    elif action == "cut":
+        print("Cutting and serving")
+        finish_order(gstate, order["index"])
+        
+def one_round(origin):
     gstate = {
         "origin": origin,
         "oven": [ None, None, None, None ],
         "cutting": [],
         "orders": [],
+        "closed": None
         }
+    while True:
+        actions = what_can_do(gstate)
+        ready = next_order_ready(gstate)
+        if ready is not None:
+            (order, time_left) = ready
+        else:
+            time_left = 100
+        if time_left < 6:
+            goto_baking_station(origin)
+            wait_for(lambda: order_baked(order))
+            out_of_oven(gstate, order["index"])
+        elif len(actions) > 0:
+            play_best_action(gstate, actions)
+        
+        if gstate["closed"] == "closed" and len(actions) == 0 and ready is None:
+            break;
+
+def start_game(save_number=2, debug=False):
+    load_reference_images()
+    origin = find_screen(debug)
     print("Origin: (%d, %d)" % origin)
     f_has_buttons = originate(has_buttons, origin)
     f_can_take_order = originate(can_take_order, origin)
@@ -527,15 +639,28 @@ def start_game(save_number=2, debug=False):
     slide_to(save_x, save_y)
     click_at()
     wait_for(f_has_buttons)
-    for cust in xrange(5):
-        wait_for(f_can_take_order)
-        order = take_order(origin, len(gstate["orders"]))
-        gstate["orders"].append(order)
-    for cust in xrange(5):
-        make_pizza(gstate, cust)
-    for cust in xrange(4):
-        out_of_oven(gstate, cust)
-        finish_order(gstate, cust)
+
+    one_round(origin)
+    
+    
+    
+    #while not shop_closed(origin):
+    #for i in xrange(4):
+    #    wait_for(f_can_take_order)
+    #    order = take_order(origin, len(gstate["orders"]))
+    #    gstate["orders"].append(order)
+    #for cust in xrange(4):
+    #    make_pizza(gstate, cust)
+    #while next_order_ready(gstate) is not None:
+    #    (o, t) = next_order_ready(gstate)
+    #    index = o["index"]
+    #    print("Order %d(+1) ready in %d" % (index, t))
+    #    if (t > 5):
+    #        time.sleep(1)
+    #    else:
+    #        wait_for(lambda: order_baked(o))
+    #        out_of_oven(gstate, index)
+    #        finish_order(gstate, index)
     
     #quit_game(origin)
     
