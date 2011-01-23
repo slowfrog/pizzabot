@@ -153,7 +153,7 @@ def goto_topping_station(origin):
 def goto_baking_station(origin):
     (x0, y0) = origin
     click_at(x0 + 522, y0 + 29)
-    time.sleep(0.25)
+    time.sleep(1)
     
 def goto_cutting_station(origin):
     (x0, y0) = origin
@@ -412,10 +412,43 @@ def make_pizza(origin, order):
             if q:
                 fill_quarter(origin, qi, topping, tpq)
             qi += 1
-    time.sleep(5)
+    time.sleep(1)
     click_into_oven(origin)
     file_order(origin, order["index"])
     time.sleep(1)
+
+BAKING_POSITION = [
+    (140, 190),
+    (300, 190),
+    (140, 360),
+    (300, 360)
+    ]
+    
+def out_of_oven(origin, which):
+    (x0, y0) = origin
+    goto_baking_station(origin)
+    (bx, by) = BAKING_POSITION[which]
+    click_at(x0 + bx, y0 + by)
+    time.sleep(1)
+
+CUTS = {
+    4: [(220, 100, 220, 450),
+        (50, 270, 400, 270)],
+    6: [(220, 100, 220, 450),
+        (81, 190, 358, 350),
+        (81, 350, 358, 190)],
+    8: [(220, 100, 220, 450),
+        (50, 270, 400, 270),
+        (60, 110, 380, 430),
+        (60, 430, 380, 110)]
+    }
+
+def cut_in(origin, slices):
+    (x0, y0) = origin
+    cuts = CUTS[slices]
+    for cut in cuts:
+        (x1, y1, x2, y2) = cut
+        drag_drop(x0 + x1, y0 + y1, x0 + x2, y0 + y2)
     
 def originate(f, origin):
     return lambda : f(origin)
@@ -436,6 +469,7 @@ def wait_for(f, period=0.5, timeout=30):
 def start_game(save_number=2, debug=False):
     load_reference_images()
     origin = find_screen(debug)
+    print("Origin: (%d, %d)" % origin)
     f_has_buttons = originate(has_buttons, origin)
     f_can_take_order = originate(can_take_order, origin)
     f_order_finished = originate(order_finished, origin)
@@ -463,6 +497,15 @@ def start_game(save_number=2, debug=False):
     make_pizza(origin, orders[2])
     make_pizza(origin, orders[3])
     time.sleep(2)
+    out_of_oven(origin, 0)
+    out_of_oven(origin, 1)
+    out_of_oven(origin, 2)
+    out_of_oven(origin, 3)
+    
+    unfile_order(origin, 0)
+    cut_in(origin, orders[0]["slices"])
+    click_into_oven(origin)
+    
     #quit_game(origin)
     
     
