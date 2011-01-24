@@ -636,11 +636,50 @@ def one_round(origin):
         if gstate["closed"] == "closed" and len(actions) == 0 and ready is None:
             break;
 
-def start_game(save_number=2, debug=False):
+def results_displayed(origin):
+    return check_one_pixel(origin, 236, 422, (30, 187, 65))
+        
+def pass_results(origin):
+    (x0, y0) = origin
+    wait_for(lambda: results_displayed(origin))
+    print("Will pass results in 5 seconds")
+    time.sleep(5)
+    click_at(x0 + 236, y0 + 422)
+
+def ranks_displayed(origin):
+    return (check_one_pixel(origin, 47, 420, (255, 254, 101)) and
+            check_one_pixel(origin, 438, 418, (255, 255, 102)))
+    
+def pass_rank_quit(origin):
+    (x0, y0) = origin
+    wait_for(lambda: ranks_displayed(origin))
+    print("Will pass ranks quitting in 5 seconds")
+    time.sleep(5)
+    click_at(x0 + 47, y0 + 420)
+    
+def pass_rank_continue(origin):
+    (x0, y0) = origin
+    wait_for(lambda: ranks_displayed(origin))
+    print("Will pass ranks continuing in 5 seconds")
+    time.sleep(5)
+    click_at(x0 + 438, y0 + 418)
+
+
+def do_rounds(origin, count):
+    f_has_buttons = originate(has_buttons, origin)
+    for r in xrange(count):
+        wait_for(f_has_buttons)
+        one_round(origin)
+        pass_results(origin)
+        if r < count - 1:
+            pass_rank_continue(origin)
+        else:
+            pass_rank_quit(origin)
+        
+def start_game(save_number=2, rounds=1, debug=False):
     load_reference_images()
     origin = find_screen(debug)
     print("Origin: (%d, %d)" % origin)
-    f_has_buttons = originate(has_buttons, origin)
     f_can_take_order = originate(can_take_order, origin)
     f_order_finished = originate(order_finished, origin)
     f_order_gone = originate(order_gone, origin)
@@ -655,31 +694,8 @@ def start_game(save_number=2, debug=False):
     save_y = y0 + 300
     slide_to(save_x, save_y)
     click_at()
-    wait_for(f_has_buttons)
-
-    one_round(origin)
     
-    
-    
-    #while not shop_closed(origin):
-    #for i in xrange(4):
-    #    wait_for(f_can_take_order)
-    #    order = take_order(origin, len(gstate["orders"]))
-    #    gstate["orders"].append(order)
-    #for cust in xrange(4):
-    #    make_pizza(gstate, cust)
-    #while next_order_ready(gstate) is not None:
-    #    (o, t) = next_order_ready(gstate)
-    #    index = o["index"]
-    #    print("Order %d(+1) ready in %d" % (index, t))
-    #    if (t > 5):
-    #        time.sleep(1)
-    #    else:
-    #        wait_for(lambda: order_baked(o))
-    #        out_of_oven(gstate, index)
-    #        finish_order(gstate, index)
-    
-    #quit_game(origin)
+    do_rounds(origin, rounds)
     
     
     
