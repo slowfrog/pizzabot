@@ -351,8 +351,8 @@ def take_order(gstate, index):
     order = { "index": index,
               "rows": rows,
               "baketime": baketime,
-              "slices": slices,
-              "state": ORDER_ORDERED }
+              "slices": slices }
+    change_state(order, ORDER_ORDERED)
     print_order(order)
     #print("Bake for %d, cut in %d, " % (baketime, slices))
     return order
@@ -423,6 +423,10 @@ def free_oven_slot(gstate):
     return -1
         
 
+def change_state(order, state):
+    order["state"] = state
+    order["last_state_change"] = time.clock()
+
 def put_order_in_oven(gstate, order):
     origin = gstate["origin"]
     oven_slot = free_oven_slot(gstate)
@@ -430,7 +434,7 @@ def put_order_in_oven(gstate, order):
     order["oven_slot"] = oven_slot
     order["bake_start"] = time.clock()
     order["bake_end"] = order["bake_start"] + 22.5 * order["baketime"] - 0 # Small adjustemnt
-    order["state"] = ORDER_BAKING
+    change_state(order, ORDER_BAKING)
     gstate["oven"][oven_slot] = order
 
 def make_pizza(gstate, index):
@@ -456,7 +460,7 @@ def make_pizza(gstate, index):
         put_order_in_oven(gstate, order)
     else:
         click_save_for_later(origin)
-        order["state"] = ORDER_SAVED
+        change_state(order, ORDER_SAVED)
         
     file_order(origin, index)
 
@@ -489,7 +493,7 @@ def out_of_oven(gstate, index):
     time.sleep(1)
     gstate["oven"][which] = None
     order["oven_slot"] = None
-    order["state"] = ORDER_BAKED
+    change_state(order, ORDER_BAKED)
     gstate["cutting"].append(order)
 
 CUTS = {
@@ -537,11 +541,11 @@ def finish_order(gstate, index):
         raise Exception("Cannot cut order %d" % index)
     unfile_order(origin, index)
     cut_in(origin, order["slices"])
-    order["state"] = ORDER_CUT
+    change_state(order, ORDER_CUT)
     click_finish_order(origin)
     wait_for(lambda : order_gone(origin))
     gstate["cutting"] = gstate["cutting"][1:]
-    order["state"] = ORDER_DONE
+    change_state(order, ORDER_DONE)
     
 def originate(f, origin):
     return lambda : f(origin)
@@ -559,6 +563,9 @@ def wait_for(f, period=0.5, timeout=30):
     #else:
     #    print("Ok after %d rounds" % round)
 
+def waiting_priority(order):
+    return (time.clock() - order["last_state_change"]) / 15
+        
 def what_can_do(gstate):
     actions = []
     origin = gstate["origin"]
@@ -566,13 +573,14 @@ def what_can_do(gstate):
     
     goto_order_station(gstate)
     if len(gstate["cutting"]) > 0:
-        actions.append(("cut", gstate["cutting"][0]))
+        order = gstate["cutting"][0]
+        actions.append(("cut", order, 4 + waiting_priority(order)))
 
     for order in gstate["orders"]:
         if order["state"] == ORDER_ORDERED:
-            actions.append(("make", order))
+            actions.append(("make", order, 4 + (order["baketime"] / 2) + waiting_priority(order)))
         elif order["state"] == ORDER_SAVED and free_oven_slot(gstate) >= 0:
-            actions = [("oven", order)] + actions
+            actions.append(("oven", order, 6 + waiting_priority(order)))
 
     # Detect shop closing/can take order
     if gstate["closed"] != "closed":
@@ -585,17 +593,16 @@ def what_can_do(gstate):
     if can_take_order(origin):
         if not "can_take_order" in gstate or gstate["can_take_order"] is None:
             gstate["can_take_order"] = now
-            actions.append(("take_order", None))
-        elif now - gstate["can_take_order"] > 20:
-            actions = [("take_order", None)] + actions
+            actions.append(("take_order", None, 4))
         else:
-            actions.append(("take_order", None))
+            actions.append(("take_order", None, 4 + (now - gstate["can_take_order"]) / 3))
 
     return actions
 
 def play_best_action(gstate, actions):
     origin = gstate["origin"]
-    (action, order) = actions[0]
+    actions.sort(key=(lambda action: action[2]), reverse=True)
+    (action, order, _) = actions[0]
     if action == "take_order":
         print("Taking order")
         order = take_order(gstate, len(gstate["orders"]))
@@ -668,6 +675,9 @@ def pass_rank_continue(origin):
 def do_rounds(origin, count):
     f_has_buttons = originate(has_buttons, origin)
     for r in xrange(count):
+        print("##################################")
+        print(" Playing round %d/%d" % (r + 1, count))
+        print("##################################")
         wait_for(f_has_buttons)
         one_round(origin)
         pass_results(origin)
