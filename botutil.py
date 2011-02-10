@@ -7,6 +7,7 @@ from __future__ import division, print_function
 
 import math
 import time
+import sys
 import win32api
 import win32con
 import Image
@@ -755,5 +756,10 @@ def start_game(save_number=2, rounds=1, debug=False):
     do_rounds(origin, rounds)
     
     
-    
-    
+def main():
+    save_number = int(sys.argv[1]) if len(sys.argv) > 1 else 2
+    rounds = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+    start_game(save_number, rounds)
+
+if __name__ == "__main__":
+    main()

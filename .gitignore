@@ -1,3 +1,6 @@
 *.pyc
 *~
 find_squares.png
+/dist/
+/build/
+/pizzabot.zip
