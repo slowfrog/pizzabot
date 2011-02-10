@@ -1,5 +1,8 @@
 # Written by Laurent Vaucher over a few days in January 2011
 # with some low-level code borrowed from nibblerslitterbox
+#
+# The license is that you can do anything you want with the code, as long as you don't sue me
+#
 from __future__ import division, print_function
 
 import math
@@ -235,7 +238,9 @@ def click_take_order(origin):
 def click_save_for_later(origin):
     (x0, y0) = origin
     click_at(x0 + 521, y0 + 417)
+
     
+# Functions that analyze one order
 ORDER_ROW_Y = 166
 
 def count_order_rows(origin):
@@ -584,6 +589,7 @@ def finish_order(gstate, index):
     wait_for(lambda : order_gone(origin))
     gstate["cutting"] = gstate["cutting"][1:]
     change_state(order, ORDER_DONE)
+    time.sleep(0.25)
     
 def originate(f, origin):
     return lambda : f(origin)
