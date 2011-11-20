@@ -71,7 +71,7 @@ def rgb_dist((r0, g0, b0), (r1, g1, b1)):
     in R, G and B coordinates"""
     return abs(r0 - r1) + abs(g0 -g1) + abs(b0 - b1)
 
-RGB_TOLERANCE = 3
+RGB_TOLERANCE = 6
 
 def check_one_pixel(origin, x, y, color):
     """Checks that one pixel on screen has the expected value, accepting a little tolerance"""
