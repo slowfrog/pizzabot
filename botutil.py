@@ -2,22 +2,22 @@
 # with some low-level code borrowed from nibblerslitterbox
 #
 # The license is that you can do anything you want with the code, as long as you don't sue me
-#
-from __future__ import division, print_function
 
+
+import os
 import math
 import time
 import sys
 import win32api
 import win32con
-import Image
-import ImageGrab
+from PIL import Image, ImageGrab
+
+import pyautogui as pag
 
 # First part with low level function to take screenshots and send 'synthetic' mouse events
 def screenshot(x0, y0, x1, y1):
     """Take a screenshot of a part of the screen"""
-    im = ImageGrab.grab((x0, y0, x1, y1))
-    return im.load()
+    return pag.screenshot(region=(x0, y0, x1, y1))
 
 def save_screenshot(x0, y0, x1, y1, filename):
     """Take a screenshot of a part of the screen and save it to a file, mainly for debug"""
@@ -32,41 +32,32 @@ def load_opaque_png(filename):
     
 def move_to(x1, y1):
     """Moves the mouse pointer to a given position on screen"""
-    win32api.SetCursorPos((x1, y1))
+    pag.moveTo(x1, y1)
         
 def slide_to(x1, y1, delta_t=1, step_t=0.05):
     """Gently slides the mouse pointer from its current position to a new destination"""
-    count = int(math.floor(delta_t / step_t))
-    count = 1 if count < 1 else count
-    (x, y) = win32api.GetCursorPos()
-    for i in xrange(count + 1):
-        ratio = i / count
-        xi = int(x + (x1 - x) * ratio)
-        yi = int(y + (y1 - y) * ratio)
-        win32api.SetCursorPos((xi, yi))
-        time.sleep(step_t)
+    pag.moveTo(x1, y1, delta_t)
 
 def click_at(x=None, y=None, delta_t=0.02):
     """Generates a click at a given position by sending a left-button down event, followed after a
     small delay by a left-button up event"""
-    if ((x is not None) and (y is not None)):
-        win32api.SetCursorPos((x, y))
-    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0)
+    pag.moveTo(x, y)
+    pag.mouseDown()
     time.sleep(delta_t)
-    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP,0,0)
+    pag.mouseUp()
 
 def drag_drop(x0, y0, x1, y1, delta_t=0.1):
     """Does a drag and drop, which is essentially the same as a click, but with the mouse pointer
     changing position between the button-down and button-up event"""
-    win32api.SetCursorPos((x0, y0))
-    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0)
-    time.sleep(delta_t)
-    win32api.SetCursorPos((x1, y1))
-    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP,0,0)
-    time.sleep(delta_t)
+    pag.moveTo(x0, y0)
+    pag.mouseDown()
+    pag.dragTo(x1, y1, delta_t, mouseDownUp=False)
+    pag.mouseUp()
 
 # Second part with some utility functions for things like image comparison
-def rgb_dist((r0, g0, b0), (r1, g1, b1)):
+def rgb_dist(c1, c2):
+    r0, g0, b0 = c1
+    r1, g1, b1 = c2
     """Computes a color-distance between two RGB colors. Nothing fancy, just the sum of distances
     in R, G and B coordinates"""
     return abs(r0 - r1) + abs(g0 -g1) + abs(b0 - b1)
@@ -77,18 +68,20 @@ def check_one_pixel(origin, x, y, color):
     """Checks that one pixel on screen has the expected value, accepting a little tolerance"""
     (x0, y0) = origin
     pix = screenshot(x0 + x, y0 + y, x0 + x + 1, y0 + y + 1)
-    return rgb_dist(pix[0, 0], color) < RGB_TOLERANCE
+    return pag.pixelMatchesColor(x0+x, y0+y, color, tolerance=RGB_TOLERANCE)
+    #return rgb_dist(pix[0, 0], color) < RGB_TOLERANCE
     
 def compare_images(im1, im2, w, h):
     """Compare two images and return an average distance over meaningful pixels. Meaningless pixels
     should be transparent, but they are in fact blue in the reference images, for easier handling"""
     count = 0
     dist = 0
-    for x in xrange(w):
-        for y in xrange(h):
+    im2.save("C:/Users/mathias/Desktop/test.png")
+    for x in range(w):
+        for y in range(h):
             if (im1[x, y] != (0, 0, 255)):
                 count += 1
-                dist += rgb_dist(im1[x, y], im2[x, y])
+                dist += rgb_dist(im1[x, y], im2.getpixel((x, y)))
     if count == 0:
         return 1000000
     else:
@@ -115,11 +108,11 @@ def is_green_check(pix, x, y):
 def slide_top_left(pix, x0, y0, dx, dy):
     """From the found position, slide to the top and left while still matching the 'green
     checkerboard' criterion"""
-    for x in xrange(x0, x0 - dx - 1, -1):
+    for x in range(x0, x0 - dx - 1, -1):
         if not is_green_check(pix, x, y0):
             break
     x += 1
-    for y in xrange(y0, y0 - dy - 1, -1):
+    for y in range(y0, y0 - dy - 1, -1):
         if not is_green_check(pix, x, y):
             break
     y += 1
@@ -132,20 +125,20 @@ def find_screen(debug=False):
     pix = im.load()
     (w, h) = im.size
     pos = None
-    for x in xrange(0, w - 200, 5):
+    for x in range(0, w - 200, 5):
         if pos:
             break
-        for y in xrange(0, h - 50, 5):
+        for y in range(0, h - 50, 5):
             if is_green_check(pix, x, y):
                 pos = slide_top_left(pix, x, y, 5, 5)
                 break
 
     if debug:
         (x0, y0) = pos
-        print("Origin at %d,%d" % pos)
-        for x in xrange(x0 - 10, x0 + 11):
+        print(("Origin at %d,%d" % pos))
+        for x in range(x0 - 10, x0 + 11):
             pix[x, y0] = RED
-        for y in xrange(y0 - 10, y0 + 11):
+        for y in range(y0 - 10, y0 + 11):
             pix[x0, y] = RED
             
         with open("find_squares.png", "wb") as outfile:
@@ -153,16 +146,21 @@ def find_screen(debug=False):
 
     return pos
 
-
 # Functions that test the current state of the game
 def has_buttons(origin):
     """See if the top four button are available."""
     (x0, y0) = origin
+    x0 += 400
     pix = screenshot(x0 + 400, y0, x0 + 600, y0 + 50)
-    return ((rgb_dist(pix[24, 16], (105, 246, 0)) < RGB_TOLERANCE) and
-            (rgb_dist(pix[67, 20], (255, 253, 98)) < RGB_TOLERANCE) and
-            (rgb_dist(pix[115, 21], (255, 164, 32)) < RGB_TOLERANCE) and
-            (rgb_dist(pix[164, 20], (44, 137, 255)) < RGB_TOLERANCE))
+    return ((pag.pixelMatchesColor(x0+24, y0+16, (105, 246, 0), tolerance=RGB_TOLERANCE) and
+            pag.pixelMatchesColor(x0+24,y0+16, (105, 246, 0), tolerance=RGB_TOLERANCE) and
+            pag.pixelMatchesColor(x0+24,y0+16, (105, 246, 0), tolerance=RGB_TOLERANCE) and
+            pag.pixelMatchesColor(x0+24,y0+16, (105, 246, 0), tolerance=RGB_TOLERANCE)))
+
+    #return ((rgb_dist(pix[24, 16], (105, 246, 0)) < RGB_TOLERANCE) and
+    #        (rgb_dist(pix[67, 20], (255, 253, 98)) < RGB_TOLERANCE) and
+    #        (rgb_dist(pix[115, 21], (255, 164, 32)) < RGB_TOLERANCE) and
+    #        (rgb_dist(pix[164, 20], (44, 137, 255)) < RGB_TOLERANCE))
 
 def can_take_order(origin):
     """Is a client waiting to order?"""
@@ -258,20 +256,22 @@ def check_quarters(origin, row):
     """See in which positions the toppinsg must go"""
     (x0, y0) = origin
     pix = screenshot(x0 + 468, y0 + 162 + row * 25, x0 + 476, y0 + 170 + row * 25)
-    q1 = rgb_dist(pix[0, 0], (130, 130, 130)) < 90
-    q2 = rgb_dist(pix[6, 0], (130, 130, 130)) < 90
-    q3 = rgb_dist(pix[6, 6], (130, 130, 130)) < 90
-    q4 = rgb_dist(pix[0, 6], (130, 130, 130)) < 90
+    q1 = rgb_dist(pix.getpixel((0, 0)), (130, 130, 130)) < 90
+    q2 = rgb_dist(pix.getpixel((6, 0)), (130, 130, 130)) < 90
+    q3 = rgb_dist(pix.getpixel((6, 6)), (130, 130, 130)) < 90
+    q4 = rgb_dist(pix.getpixel((0, 6)), (130, 130, 130)) < 90
     return (q1, q2, q3, q4)
 
 
 def cutting_type(origin):
     """Counts the number of slices"""
     (x0, y0) = origin
+    x0 += 544
+    y0 += 340
     pix = screenshot(x0 + 544, y0 + 340, x0 + 550, y0 + 352)
-    c4 = rgb_dist(pix[0, 11], (102, 102, 102)) < 20
-    c6 = rgb_dist(pix[3, 2], (102, 102, 102)) < 20
-    c8 = rgb_dist(pix[5, 0], (102, 102, 102)) < 20
+    c4 = pag.pixelMatchesColor(x0, y0+11, (102, 102, 102), tolerance=20)
+    c6 = pag.pixelMatchesColor(x0+3, y0+2, (102, 102, 102), tolerance=20)
+    c8 = pag.pixelMatchesColor(x0+5, y0, (102, 102, 102), tolerance=20)
     if c4:
         return 8 if c8 else 4
     elif c6:
@@ -284,17 +284,41 @@ def baking_time(origin):
     """See how long it should be baked"""
     (x0, y0) = origin
     pix = screenshot(x0 + 470, y0 + 340, x0 + 500, y0 + 370)
-    if rgb_dist(pix[25, 4], (111, 111, 111)) < RGB_TOLERANCE:
+    pix.save("C:/Users/mathias/Desktop/test.png")
+    x0+=470
+    y0+=340
+    if pag.pixelMatchesColor(x0+25, y0+4, (111, 111, 111), tolerance=9):
         return 1
-    elif rgb_dist(pix[28, 13], (102, 102, 102)) < RGB_TOLERANCE:
+    elif pag.pixelMatchesColor(x0+28, y0+13, (102, 102, 102), tolerance=9):
         return 2
-    elif rgb_dist(pix[24, 21], (111, 111, 111)) < RGB_TOLERANCE:
+    elif pag.pixelMatchesColor(x0+24, y0+21, (111, 111, 111), tolerance=9):
         return 3
-    elif rgb_dist(pix[18, 24], (102, 102, 102)) < RGB_TOLERANCE:
+    elif pag.pixelMatchesColor(x0+18, y0+24, (102, 102, 102), tolerance=9):
         return 4
-    elif rgb_dist(pix[11, 21], (102, 102, 102)) < RGB_TOLERANCE:
+    elif pag.pixelMatchesColor(x0+11, y0+21, (102, 102, 102), tolerance=9):
         return 5
-    elif rgb_dist(pix[8, 13], (102, 102, 102)) < RGB_TOLERANCE:
+    elif pag.pixelMatchesColor(x0+8, y0+13, (102, 102, 102), tolerance=9):
+        return 6
+    else:
+        # Should save image for debug
+        raise Exception("Baking time not found")
+
+def __baking_time(origin):
+    """See how long it should be baked"""
+    (x0, y0) = origin
+    pix = screenshot(x0 + 470, y0 + 340, x0 + 500, y0 + 370)
+    pix.save("C:/Users/mathias/Desktop/test.png")
+    if rgb_dist(pix.getpixel((25, 4)), (111, 111, 111)) < RGB_TOLERANCE:
+        return 1
+    elif rgb_dist(pix.getpixel((28, 13)), (102, 102, 102)) < RGB_TOLERANCE:
+        return 2
+    elif rgb_dist(pix.getpixel((24, 21)), (111, 111, 111)) < RGB_TOLERANCE:
+        return 3
+    elif rgb_dist(pix.getpixel((18, 24)), (102, 102, 102)) < RGB_TOLERANCE:
+        return 4
+    elif rgb_dist(pix.getpixel((11, 21)), (102, 102, 102)) < RGB_TOLERANCE:
+        return 5
+    elif rgb_dist(pix.getpixel((8, 13)), (102, 102, 102)) < RGB_TOLERANCE:
         return 6
     else:
         # Should save image for debug
@@ -346,14 +370,43 @@ def unfile_order(origin, index):
     (x1, y1) = order_position(origin, index)
     drag_drop(x1, y1, x0 + 537, y0 + 120)
 
-def quarter_string((q1, q2, q3, q4)):
-    return "%s%s\n%s%s" % (("#" if q1 else "."), ("#" if q2 else "."),
-                           ("#" if q4 else "."), ("#" if q3 else "."))
+def quarter_string(q):
+    q1, q2, q3, q4 = q
+
+    if q1 and q2 and q3 and q4:
+        return "⬤" # Full
+    elif q1 and q2 and q3:
+        return "◵"
+    elif q1 and q2 and q4:
+        return "◶"
+    elif q1 and q3 and q4:
+        return "◷"
+    elif q2 and q3 and q4:
+        return "◕" # Top Left
+    elif q1 and q2:
+        return "◓" # Top
+    elif q2 and q3:
+        return "◑" # Right
+    elif q3 and q4:
+        return "◒" # Bottom
+    elif q1 and q4:
+        return "◐" # Left
+    elif q1:
+        return "◜"
+    elif q2:
+        return "◔"
+    elif q3:
+        return "◞"
+    elif q4:
+        return "◟"
+    else:
+        return "?"
 
 def print_order(o):
     for row in o["rows"]:
-        print("%s    %d %s" % (quarter_string(row["quarters"]), row["count"], row["topping"]))
-    print("Bake for %d, slice in %d" % (o["baketime"], o["slices"]))
+        if (row["quarters"] != "") and (row["count"] != "") and (row["topping"] != ""):
+            print(f'    {row["count"]} {row["topping"]}')
+    print(f"Bake for {o['baketime']}/8, slice in {o['slices']}")
     print("----------------------")
 
 # order states: ordered, saved, baking, baked, cut, done
@@ -371,12 +424,13 @@ def take_order(gstate, index):
     origin = gstate["origin"]
     gstate["can_take_order"] = None
     click_take_order(origin)
-    wait_for(lambda : is_taking_order(origin))
-    wait_for(lambda : order_finished(origin))
+    originate(is_taking_order, origin)
+    wait_for(originate(is_taking_order, origin))
+    wait_for(originate(order_finished, origin))
     # analyze order
     rowcount = count_order_rows(origin)
     rows = []
-    for row in xrange(rowcount):
+    for row in range(rowcount):
         quarters = check_quarters(origin, row)
         topping = find_topping(origin, row)
         count = find_count(origin, row)
@@ -421,11 +475,11 @@ COUNT_IMAGES = {}
 def load_reference_images():
     """Load reference images for toppings and topping quantities."""
     for topping in TOPPINGS:
-        filename = topping + ".png"
+        filename = "C:\\Users\\mathias\\Desktop\\pizzabot-master\\" + topping + ".png"
         (img, w, h) = load_opaque_png(filename)
         TOPPING_IMAGES[topping] = (img, w, h)
     for count in COUNTS:
-        filename = "count%d.png" % count
+        filename = "C:\\Users\\mathias\\Desktop\\pizzabot-master\\" + "count%d.png" % count
         (img, w, h) = load_opaque_png(filename)
         COUNT_IMAGES[count] = (img, w, h)
 
@@ -452,14 +506,14 @@ SXY = [
 
 def fill_quarter(origin, which, what, how_many):
     (sx, sy) = SXY[which]
-    for h in xrange(how_many):
+    for h in range(how_many):
         (qx, qy) = QUARTERS[h]
         x1 = 220 + sx * qx
         y1 = 237 + sy * qy
         move_topping(origin, what, (x1, y1))
 
 def free_oven_slot(gstate):
-    for i in xrange(4):
+    for i in range(4):
         if gstate["oven"][i] is None:
             return i
     return -1
@@ -499,10 +553,10 @@ def make_pizza(gstate, index):
             qi += 1
     oven_slot = free_oven_slot(gstate)
     if oven_slot >= 0:
-        print("Direct into oven #%d" % (1 + index))
+        print(f"Direct into oven #{index+1}")
         put_order_in_oven(gstate, order)
     else:
-        print("Save for later #%d" % (1 + index))
+        print(f"Save for later #{index+1}")
         click_save_for_later(origin)
         change_state(order, ORDER_SAVED)
         
@@ -596,18 +650,11 @@ def originate(f, origin):
     return lambda : f(origin)
 
 def wait_for(f, period=0.5, timeout=30):
-    start_time = time.clock()
-    timeout_elapsed = timeout < 0
-    round = 0
-    while not (f() or timeout_elapsed):
-        round += 1
-        time.sleep(period)
-        timeout_elapsed = ((time.clock() - start_time) > timeout > 0)
-    if timeout_elapsed:
-        print("Waiting failed: timeout")
-        raise Exception("Waiting failed ****** %s" % f)
+    while not f():
+        pass
     #else:
     #    print("Ok after %d rounds" % round)
+
 
 def waiting_priority(order):
     return (time.clock() - order["last_state_change"]) / 15
@@ -650,17 +697,17 @@ def play_best_action(gstate, actions):
     actions.sort(key=(lambda action: action[2]), reverse=True)
     (action, order, _) = actions[0]
     if action == "take_order":
-        print("Taking order #%d" % (1 + len(gstate["orders"])))
+        print(f"Taking order #{1+len(gstate['orders'])}")
         order = take_order(gstate, len(gstate["orders"]))
         gstate["orders"].append(order)
     elif action == "make":
-        print("Making pizza #%d" % (1 + order["index"]))
+        print(f"Making pizza #{1+order['index']}")
         make_pizza(gstate, order["index"])
     elif action == "oven":
-        print("Into oven #%d" % (1 + order["index"]))
+        print(f"Into oven #{1+order['index']}")
         bake_saved_pizza(gstate, order["index"])
     elif action == "cut":
-        print("Cutting and serving #%d" % (1 + order["index"]))
+        print(f"Cutting and serving #{1+order['index']}")
         finish_order(gstate, order["index"])
         
 def one_round(origin):
@@ -681,7 +728,7 @@ def one_round(origin):
             time_left = 100
         if time_left < 7:
             goto_baking_station(gstate)
-            print("Out of oven #%d" % (1 + order["index"]))
+            print(f"Out of oven #{1+order['index']}")
             wait_for(lambda: order_baked(order))
             out_of_oven(gstate, order["index"])
         elif len(actions) > 0:
@@ -703,22 +750,40 @@ def pass_rank_quit(origin):
     print("Will pass ranks quitting in 5 seconds")
     time.sleep(5)
     click_at(x0 + 47, y0 + 420)
-    
+
+def check_continue(origin):
+    print("Skip loading in 5 seconds")
+    time.sleep(5)
+    (x0, y0) = origin
+    pix = pag.screenshot()
+    while pix.getpixel((x0+200, y0+425)) != (0,0,0):
+        pix = pag.screenshot()
+        time.sleep(1)
+
+    pag.moveTo(x0+500, y0+418)
+    pag.click()
+
+
 def pass_rank_continue(origin):
     (x0, y0) = origin
     wait_for(lambda: ranks_displayed(origin))
     print("Will pass ranks continuing in 5 seconds")
     time.sleep(5)
     click_at(x0 + 438, y0 + 418)
+    check_continue(origin)
+    #wait_for(lambda: pag.pixelMatchesColor(x0+418, y0+425, ))
+    pag.moveTo(x0+438, y0+418)
+    pag.click()
 
 
 def do_rounds(origin, count):
     f_has_buttons = originate(has_buttons, origin)
-    for r in xrange(count):
+    if count == 0: count = 1000000
+    for r in range(count):
         try:
-            print("##################################")
-            print(" Playing round %d/%d" % (r + 1, count))
-            print("##################################")
+            print("######################")
+            print((" Playing round %d/%d" % (r + 1, count)))
+            print("######################")
             wait_for(f_has_buttons)
             one_round(origin)
             pass_results(origin)
@@ -726,9 +791,17 @@ def do_rounds(origin, count):
                 pass_rank_continue(origin)
             else:
                 pass_rank_quit(origin)
-        except Exception, e:
+        except Exception as e:
+            e_type, e_object, e_traceback = sys.exc_info()
+            e_line_number = e_traceback.tb_lineno
+            e_filename = os.path.split(
+                e_traceback.tb_frame.f_code.co_filename
+            )[1]
+
             print("@*@*!@#!*@!#*@#*@!#*@*************************************!!!!!!!")
-            print("ERROR %s" % e)
+            print(("ERROR %s" % e))
+            print(type(e).__name__)
+            print(f"Line: {e_line_number}")
             print("Aborting game in 10 seconds")
             time.sleep(10)
             quit_game(origin)
@@ -737,7 +810,7 @@ def do_rounds(origin, count):
 def start_game(save_number=2, rounds=1, debug=False):
     load_reference_images()
     origin = find_screen(debug)
-    print("Origin: (%d, %d)" % origin)
+    print(f"Origin: {origin}")
     f_can_take_order = originate(can_take_order, origin)
     f_order_finished = originate(order_finished, origin)
     f_order_gone = originate(order_gone, origin)
@@ -751,15 +824,15 @@ def start_game(save_number=2, rounds=1, debug=False):
     save_x = x0 + (105 + save_number * 195)
     save_y = y0 + 300
     slide_to(save_x, save_y)
-    click_at()
-    
+    click_at()    
     do_rounds(origin, rounds)
     
     
-def main():
-    save_number = int(sys.argv[1]) if len(sys.argv) > 1 else 2
-    rounds = int(sys.argv[2]) if len(sys.argv) > 2 else 1
-    start_game(save_number, rounds)
+def main(save, rounds, debug=False):
+    save_number = save
+    rounds = rounds
+    start_game(save_number, rounds, debug)
 
 if __name__ == "__main__":
-    main()
+    os.system("clear")
+    main(0, 2)
