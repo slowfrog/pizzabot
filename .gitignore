@@ -1,5 +1,7 @@
 *.pyc
 *~
+saved_position.txt
+pos.py
 find_squares.png
 /dist/
 /build/
